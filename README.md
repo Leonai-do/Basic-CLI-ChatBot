@@ -25,7 +25,6 @@ for running inside a Conda environment or Docker container.
    ```
 
 3. **Run the chatbot**
-
    ```bash
    python chatbot.py chat
    ```
@@ -40,4 +39,4 @@ To build and run with Docker:
 ```bash
 docker build -t cli-chatbot .
 docker run --env-file .env -it cli-chatbot
-```
+
