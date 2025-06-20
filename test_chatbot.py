@@ -88,7 +88,6 @@ def test_get_api_key_env(monkeypatch):
     bot = ChatBot()
     assert bot.get_api_key(Provider.OPENAI) == "123"
 
-
 class DummyBenchmark:
     async def __call__(self, func):
         return await func()

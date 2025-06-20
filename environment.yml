@@ -15,3 +15,5 @@ dependencies:
       - prompt-toolkit
       - pytest
       - pytest-asyncio
+      - python-dotenv
+

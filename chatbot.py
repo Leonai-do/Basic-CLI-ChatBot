@@ -17,6 +17,7 @@ from rich.text import Text
 from rich.live import Live
 from rich.spinner import Spinner
 from prompt_toolkit import prompt
+from dotenv import load_dotenv
 
 # Provider libraries. These are imported lazily in provider classes
 import openai
@@ -249,11 +250,16 @@ class ChatBot:
         return provider, model
 
     def get_api_key(self, provider: Provider) -> str:
+
+        load_dotenv(dotenv_path=".env", override=False)
         env_name = f"{provider.value.upper()}_API_KEY"
         key = os.getenv(env_name)
         if key:
-            console.print(f"Using {env_name} from environment", style="green")
+            console.print(
+                f"Using {env_name} from environment or .env", style="green"
+            )
             return key
+        console.print(f"Enter your {provider.value.title()} API key:")
         key = prompt("API key: ", is_password=True)
         if not key:
             console.print("API key required", style="red")
