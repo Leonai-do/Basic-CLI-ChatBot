@@ -250,7 +250,6 @@ class ChatBot:
         return provider, model
 
     def get_api_key(self, provider: Provider) -> str:
-
         load_dotenv(dotenv_path=".env", override=False)
         env_name = f"{provider.value.upper()}_API_KEY"
         key = os.getenv(env_name)

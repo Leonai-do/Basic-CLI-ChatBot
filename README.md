@@ -39,4 +39,3 @@ To build and run with Docker:
 ```bash
 docker build -t cli-chatbot .
 docker run --env-file .env -it cli-chatbot
-
