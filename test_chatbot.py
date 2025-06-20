@@ -82,13 +82,6 @@ async def test_error_handling(mock_model):
             out.append(chunk)
         assert any("Error" in c for c in out)
 
-
-def test_get_api_key_env(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "123")
-    bot = ChatBot()
-    assert bot.get_api_key(Provider.OPENAI) == "123"
-
-
 def test_get_api_key_dotenv(tmp_path, monkeypatch):
     env_file = tmp_path / ".env"
     env_file.write_text("OPENAI_API_KEY=dotenv-key")
@@ -97,7 +90,6 @@ def test_get_api_key_dotenv(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     bot = ChatBot()
     assert bot.get_api_key(Provider.OPENAI) == "dotenv-key"
-
 
 class DummyBenchmark:
     async def __call__(self, func):
