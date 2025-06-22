@@ -354,7 +354,8 @@ class ChatBot:
         
         while True:
             try:
-                user_input = prompt("You: ").strip()
+                # Get input directly without empty panel
+                user_input = prompt("You 👤 > ").strip()
             except (KeyboardInterrupt, EOFError):
                 console.print("\n👋 Goodbye!", style="yellow")
                 break
@@ -372,7 +373,7 @@ class ChatBot:
             elif not user_input:
                 continue
             
-            # Display user message in a panel
+            # Only display user message in panel format
             console.print(
                 Panel(
                     user_input,
