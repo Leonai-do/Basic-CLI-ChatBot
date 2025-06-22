@@ -120,15 +120,21 @@ class OpenAIProvider(ChatbotProvider):
                 self.add_to_history("assistant", full)
         except openai.APIError as e:
             error_msg = f"OpenAI API error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
         except openai.APIConnectionError as e:
             error_msg = f"Connection error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
-            console.print(error_msg, style="bold red")
+            yield error_msg
+        except openai.APIError as e:
+            error_msg = f"OpenAI API error: {str(e)}"
+            yield error_msg
+        except openai.APIConnectionError as e:
+            error_msg = f"Connection error: {str(e)}"
+            yield error_msg
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
             yield error_msg
 
 class AnthropicProvider(ChatbotProvider):
@@ -152,7 +158,6 @@ class AnthropicProvider(ChatbotProvider):
                 self.add_to_history("assistant", full)
         except Exception as e:
             error_msg = f"Anthropic error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
 
 class GeminiProvider(ChatbotProvider):
@@ -175,7 +180,6 @@ class GeminiProvider(ChatbotProvider):
                     yield chunk.text
         except Exception as e:
             error_msg = f"Gemini error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
 
 class DeepSeekProvider(ChatbotProvider):
@@ -242,7 +246,6 @@ class DeepSeekProvider(ChatbotProvider):
             self.add_to_history("assistant", full)
         except Exception as e:
             error_msg = f"DeepSeek error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
 
 class GroqProvider(ChatbotProvider):
@@ -269,7 +272,6 @@ class GroqProvider(ChatbotProvider):
             self.add_to_history("assistant", full)
         except Exception as e:
             error_msg = f"Groq error: {str(e)}"
-            console.print(error_msg, style="bold red")
             yield error_msg
 
 class ChatBot:
@@ -356,8 +358,11 @@ class ChatBot:
                 console.print("👋 Goodbye!", style="yellow")
                 break
             elif user_input.lower() == "clear":
-                self.provider.history.clear()
-                console.print("🧹 Chat history cleared!", style="yellow")
+                if self.provider:
+                    self.provider.history.clear()
+                    console.print("🧹 Chat history cleared!", style="yellow")
+                else:
+                    console.print("⚠️ No active provider to clear history", style="yellow")
                 continue
             elif not user_input:
                 continue
@@ -369,19 +374,24 @@ class ChatBot:
                 with Live(Spinner("dots", text="🤔 Thinking...")):
                     await asyncio.sleep(0.5)
             
-            console.print("🤖 Assistant:", style="bold green", end=" ")
-            out = Text()
-            try:
-                with Live(out, refresh_per_second=20) as live:
-                    async for chunk in self.provider.stream_response(user_input):
-                        out.append(chunk, style="white")
-                        live.update(out)
-                console.print()  # New line after response
-                console.print(Panel(out, title="Assistant", border_style="green"))
-            except KeyboardInterrupt:
-                console.print("\n⏹️ Response interrupted", style="yellow")
-            except Exception as e:
-                console.print(f"\n❌ Error during response: {e}", style="bold red")
+            if self.provider:
+                # Skip "🤖 Assistant:" prefix for cleaner output
+                out = Text()
+                try:
+                    with Live(out, refresh_per_second=20) as live:
+                        async for chunk in self.provider.stream_response(user_input):
+                            out.append(chunk, style="white")
+                            live.update(out)
+                    # Only print panel if we have non-empty output
+                    if out.plain:
+                        console.print()  # New line after response
+                        console.print(Panel(out, title="Assistant", border_style="green"))
+                except KeyboardInterrupt:
+                    console.print("\n⏹️ Response interrupted", style="yellow")
+                except Exception as e:
+                    console.print(f"\n❌ Error during response: {e}", style="bold red")
+            else:
+                console.print("⚠️ No active provider to generate response", style="yellow")
 
     async def run(self) -> None:
         try:

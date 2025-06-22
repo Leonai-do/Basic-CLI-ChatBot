@@ -16,4 +16,4 @@ dependencies:
       - pytest
       - pytest-asyncio
       - python-dotenv
-
+      - nest-asyncio
