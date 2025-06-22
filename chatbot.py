@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import json
+import aiohttp
 from dataclasses import dataclass
 from enum import Enum
 from typing import AsyncGenerator, List, Optional
@@ -35,6 +37,7 @@ class Provider(str, Enum):
     GEMINI = "gemini"
     DEEPSEEK = "deepseek"
     GROQ = "groq"
+    MCP = "mcp"
 
 @dataclass
 class ModelInfo:
@@ -70,6 +73,11 @@ PROVIDER_MODELS: dict[Provider, List[ModelInfo]] = {
         ModelInfo("llama-3.1-70b-versatile", "Llama 3.1 70B"),
         ModelInfo("llama-3.1-8b-instant", "Llama 3.1 8B"),
         ModelInfo("mixtral-8x7b-32768", "Mixtral 8x7B"),
+    ],
+    Provider.MCP: [
+        ModelInfo("mcp-standard", "MCP Standard", max_tokens=4096),
+        ModelInfo("mcp-advanced", "MCP Advanced", max_tokens=8192),
+        ModelInfo("mcp-enterprise", "MCP Enterprise", max_tokens=32768),
     ],
 }
 
@@ -248,6 +256,52 @@ class DeepSeekProvider(ChatbotProvider):
             error_msg = f"DeepSeek error: {str(e)}"
             yield error_msg
 
+class MCPProvider(ChatbotProvider):
+    def __init__(self, api_key: str, model: ModelInfo):
+        super().__init__(api_key, model)
+        self.base_url = os.getenv("MCP_BASE_URL", "https://api.mcp-server.com")
+        self.session = aiohttp.ClientSession()
+        
+    async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
+        self.add_to_history("user", message)
+        try:
+            payload = {
+                "model": self.model.name,
+                "messages": self.history,
+                "stream": True,
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "execute_tool",
+                            "description": "Execute a tool via MCP protocol",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "tool_name": {"type": "string"},
+                                    "parameters": {"type": "object"}
+                                },
+                                "required": ["tool_name"]
+                            }
+                        }
+                    }
+                ]
+            }
+            
+            async with self.session.post(
+                f"{self.base_url}/v1/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload
+            ) as response:
+                async for line in response.content:
+                    if line.startswith(b"data: "):
+                        data = json.loads(line[6:])
+                        if "choices" in data and data["choices"][0]["delta"].get("content"):
+                            yield data["choices"][0]["delta"]["content"]
+        except Exception as e:
+            error_msg = f"MCP error: {str(e)}"
+            yield error_msg
+
 class GroqProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
@@ -343,6 +397,7 @@ class ChatBot:
             Provider.GEMINI: GeminiProvider,
             Provider.DEEPSEEK: DeepSeekProvider,
             Provider.GROQ: GroqProvider,
+            Provider.MCP: MCPProvider,
         }
         cls = mapping[provider]
         return cls(key, model)
