@@ -1,0 +1,11 @@
+openai
+anthropic
+google-generativeai
+groq
+rich
+typer
+prompt-toolkit
+pytest
+pytest-asyncio
+python-dotenv
+nest-asyncio
