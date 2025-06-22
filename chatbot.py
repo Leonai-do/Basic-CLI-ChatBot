@@ -281,10 +281,15 @@ class ChatBot:
         self.model: Optional[ModelInfo] = None
 
     def display_welcome(self) -> None:
-        text = Text()
-        text.append("🤖 Multi-Provider CLI Chatbot\n", style="bold blue")
-        text.append("Supports OpenAI, Anthropic, Gemini, DeepSeek, Groq", style="green")
-        console.print(Panel(text, title="Welcome", border_style="blue"))
+        console.print(Panel(
+            "[bold blue]🤖 Multi-Provider CLI Chatbot\n\n"
+            "📡 Supports: [green]OpenAI, Anthropic, Gemini, DeepSeek, Groq[/green]\n"
+            "💬 Type your message, 'clear' to reset, or 'quit' to exit",
+            title="Welcome",
+            title_align="center",
+            border_style="blue",
+            padding=(1, 2)
+        ))
 
     def select_provider_and_model(self) -> tuple[Provider, ModelInfo]:
         providers = list(Provider)
@@ -349,7 +354,8 @@ class ChatBot:
         
         while True:
             try:
-                user_input = prompt("You: ").strip()
+                # Get input directly without empty panel
+                user_input = prompt("You 👤 > ").strip()
             except (KeyboardInterrupt, EOFError):
                 console.print("\n👋 Goodbye!", style="yellow")
                 break
@@ -366,22 +372,39 @@ class ChatBot:
                 continue
             elif not user_input:
                 continue
-                
             
+            # Only display user message in panel format
+            console.print(
+                Panel(
+                    user_input,
+                    title="You 👤",
+                    title_align="left",
+                    style="blue",
+                    padding=(0, 2),
+                    expand=False
+                )
+            )
             
             # Show thinking indicator for thinking models
             if self.model and self.model.is_thinking:
-                with Live(Spinner("dots", text="🤔 Thinking...")):
+                with Live(Spinner("dots", text="🤔 Thinking..."), refresh_per_second=10):
                     await asyncio.sleep(0.5)
             
             if self.provider:
-                # Skip "🤖 Assistant:" prefix for cleaner output
-                out = Text()
+                # Create a panel for the assistant response
+                panel_title = f"{self.model.display_name} 🤖"
+                panel = Panel("", title=panel_title, title_align="left", 
+                              style="green", padding=(0, 2), expand=False)
+                
                 try:
-                    with Live(out, refresh_per_second=20) as live:
+                    with Live(panel, console=console, refresh_per_second=10) as live:
+                        full_response = ""
                         async for chunk in self.provider.stream_response(user_input):
-                            out.append(chunk, style="white")
-                            live.update(out)
+                            full_response += chunk
+                            # Format markdown and preserve newlines
+                            formatted = full_response.replace('\n', '\n\n')
+                            panel.renderable = formatted
+                            live.update(panel)
                 except KeyboardInterrupt:
                     console.print("\n⏹️ Response interrupted", style="yellow")
                 except Exception as e:
