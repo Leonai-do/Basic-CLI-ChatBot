@@ -285,7 +285,7 @@ class ChatBot:
             "[bold blue]🤖 Multi-Provider CLI Chatbot\n\n"
             "📡 Supports: [green]OpenAI, Anthropic, Gemini, DeepSeek, Groq[/green]\n"
             "💬 Type your message, 'clear' to reset, or 'quit' to exit",
-            title="Welcome",
+            title="Welcome to ChatBot",
             title_align="center",
             border_style="blue",
             padding=(1, 2)
