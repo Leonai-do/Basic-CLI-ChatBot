@@ -367,7 +367,7 @@ class ChatBot:
             elif not user_input:
                 continue
                 
-            console.print(Panel(Text(user_input, style="blue"), title="You", border_style="blue"))
+            
             
             # Show thinking indicator for thinking models
             if self.model and self.model.is_thinking:
@@ -382,10 +382,6 @@ class ChatBot:
                         async for chunk in self.provider.stream_response(user_input):
                             out.append(chunk, style="white")
                             live.update(out)
-                    # Only print panel if we have non-empty output
-                    if out.plain:
-                        console.print()  # New line after response
-                        console.print(Panel(out, title="Assistant", border_style="green"))
                 except KeyboardInterrupt:
                     console.print("\n⏹️ Response interrupted", style="yellow")
                 except Exception as e:
@@ -421,5 +417,13 @@ def chat():
     chatbot = ChatBot()
     asyncio.run(chatbot.run())
 
+def main():
+    import sys
+    # If 'chat' command is provided, run the chat function directly
+    if len(sys.argv) > 1 and sys.argv[1] == "chat":
+        asyncio.run(ChatBot().run())
+    else:
+        app()
+
 if __name__ == "__main__":
-    app()
+    main()
