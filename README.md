@@ -39,3 +39,23 @@ To build and run with Docker:
 ```bash
 docker build -t cli-chatbot .
 docker run --env-file .env -it cli-chatbot
+
+
+
+### Alternative: Using pip
+
+If you prefer using pip instead of Conda:
+
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run the chatbot**
+   ```bash
+   python chatbot.py chat
+   ```
+
+Environment variables override any values in `.env`, so you can also export `OPENAI_API_KEY` and similar variables if preferred.
+
+
