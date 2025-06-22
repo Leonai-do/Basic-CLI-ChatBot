@@ -40,8 +40,6 @@ To build and run with Docker:
 docker build -t cli-chatbot .
 docker run --env-file .env -it cli-chatbot
 
-
-
 ### Alternative: Using pip
 
 If you prefer using pip instead of Conda:
@@ -55,7 +53,4 @@ If you prefer using pip instead of Conda:
    ```bash
    python chatbot.py chat
    ```
-
 Environment variables override any values in `.env`, so you can also export `OPENAI_API_KEY` and similar variables if preferred.
-
-
