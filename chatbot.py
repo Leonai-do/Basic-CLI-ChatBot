@@ -11,12 +11,10 @@ import aiohttp
 from dataclasses import dataclass
 from enum import Enum
 from typing import AsyncGenerator, List, Optional
-import re
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.prompt import Prompt, IntPrompt
