@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
 from rich.spinner import Spinner
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import Prompt
 from prompt_toolkit import prompt
 from dotenv import load_dotenv
 
@@ -28,6 +28,11 @@ import google.generativeai as genai
 import groq
 
 console = Console()
+
+
+def get_user_input(prompt_message: str) -> str:
+    """Return stripped user input using ``prompt_toolkit``."""
+    return prompt(prompt_message).strip()
 
 class Provider(str, Enum):
     OPENAI = "openai"
@@ -349,30 +354,50 @@ class ChatBot:
 
     def select_provider_and_model(self) -> tuple[Provider, ModelInfo]:
         providers = list(Provider)
-        console.print("\n📡 Available Providers:", style="bold cyan")
-        for i, p in enumerate(providers, 1):
-            console.print(f"  {i}. {p.value.title()}")
-        
-        provider_choice = IntPrompt.ask(
-            "Select provider", 
-            choices=[str(i) for i in range(1, len(providers) + 1)],
-            default=1
-        )
-        provider = providers[provider_choice - 1]
-        
+
+        def show_providers() -> None:
+            console.print("\n📡 Available Providers:", style="bold cyan")
+            for i, p in enumerate(providers, 1):
+                console.print(f"  {i}. {p.value.title()}")
+
+        show_providers()
+        while True:
+            choice = get_user_input("Select provider > ")
+            if choice.lower() in {"quit", "exit", "q"}:
+                console.print("👋 Goodbye!", style="yellow")
+                sys.exit(0)
+            if choice.lower() == "clear":
+                console.clear()
+                show_providers()
+                continue
+            if choice.isdigit() and 1 <= int(choice) <= len(providers):
+                provider = providers[int(choice) - 1]
+                break
+            console.print("❌ Invalid selection. Please enter a valid number.", style="bold red")
+
         models = PROVIDER_MODELS[provider]
-        console.print(f"\n🧠 Models for {provider.value.title()}:", style="bold cyan")
-        for i, m in enumerate(models, 1):
-            mark = " 🤔" if m.is_thinking else ""
-            console.print(f"  {i}. {m.display_name}{mark}")
-        
-        model_choice = IntPrompt.ask(
-            "Select model",
-            choices=[str(i) for i in range(1, len(models) + 1)],
-            default=1
-        )
-        model = models[model_choice - 1]
-        
+
+        def show_models() -> None:
+            console.print(f"\n🧠 Models for {provider.value.title()}", style="bold cyan")
+            for i, m in enumerate(models, 1):
+                mark = " 🤔" if m.is_thinking else ""
+                console.print(f"  {i}. {m.display_name}{mark}")
+
+        show_models()
+        while True:
+            choice = get_user_input("Select model > ")
+            if choice.lower() in {"quit", "exit", "q"}:
+                console.print("👋 Goodbye!", style="yellow")
+                sys.exit(0)
+            if choice.lower() == "clear":
+                console.clear()
+                show_models()
+                continue
+            if choice.isdigit() and 1 <= int(choice) <= len(models):
+                model = models[int(choice) - 1]
+                break
+            console.print("❌ Invalid selection. Please enter a valid number.", style="bold red")
+
         return provider, model
 
     def get_api_key(self, provider: Provider) -> str:
@@ -412,7 +437,7 @@ class ChatBot:
         while True:
             try:
                 # Get input directly without empty panel
-                user_input = prompt("You 👤 > ").strip()
+                user_input = get_user_input("You 👤 > ")
             except (KeyboardInterrupt, EOFError):
                 console.print("\n👋 Goodbye!", style="yellow")
                 break
