@@ -137,8 +137,10 @@ async def test_gemini_stream(mock_model):
         assert call_args[1]['stream'] is True
         assert call_args[1]['generation_config'].max_output_tokens == gemini_model_info.max_tokens
 
-        # GeminiProvider does not populate self.history from the base class
-        assert provider.history == []
+        assert provider.history == [
+            {"role": "user", "parts": ["Test Gemini"]},
+            {"role": "model", "parts": ["Gemini says hello!"]},
+        ]
 
 @pytest.mark.asyncio
 async def test_groq_stream(mock_model):
@@ -248,14 +250,12 @@ async def test_stream_perf(mock_model):
         assert len(result) == 10
 
 @pytest.mark.asyncio
-async def test_deepseek_thinking_split_tags_fragility(thinking_model):
-    # This test demonstrates the current fragility with split tags.
-    # The current logic will not hide content if tags are split across chunks.
+async def test_deepseek_thinking_split_tags(thinking_model):
     mock_stream = [
-        Mock(choices=[Mock(delta=Mock(content="<think"))]),      # Split open tag start
-        Mock(choices=[Mock(delta=Mock(content="ing>hidden"))]),  # Split open tag end + content
-        Mock(choices=[Mock(delta=Mock(content="</think"))]),     # Split close tag start
-        Mock(choices=[Mock(delta=Mock(content="ing>"))]),        # Split close tag end
+        Mock(choices=[Mock(delta=Mock(content="<think"))]),
+        Mock(choices=[Mock(delta=Mock(content="ing>hidden"))]),
+        Mock(choices=[Mock(delta=Mock(content="</think"))]),
+        Mock(choices=[Mock(delta=Mock(content="ing>"))]),
         Mock(choices=[Mock(delta=Mock(content="visible"))]),
     ]
     with patch("openai.OpenAI") as m:
@@ -264,5 +264,4 @@ async def test_deepseek_thinking_split_tags_fragility(thinking_model):
         out = []
         async for chunk in provider.stream_response("hi"):
             out.append(chunk)
-        assert out == ["<think", "ing>hidden", "</think", "ing>", "visible"], \
-            "DeepSeek thinking tag logic does not correctly handle tags split across chunks."
+        assert out == ["visible"]

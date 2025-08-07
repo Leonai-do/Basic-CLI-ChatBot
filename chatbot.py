@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 import openai
 import anthropic
 import google.generativeai as genai
-from groq import Groq
+import groq
 
 console = Console()
 
@@ -96,7 +96,7 @@ class ChatbotProvider:
 class OpenAIProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
-        self.client = openai.AsyncOpenAI(api_key=api_key)
+        self.client = openai.OpenAI(api_key=api_key)
 
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
         self.add_to_history("user", message)
@@ -104,7 +104,8 @@ class OpenAIProvider(ChatbotProvider):
             # Handle o1 models differently (no streaming, no system messages)
             if self.model.name.startswith(("o1", "o3")):
                 # o1 models don't support streaming
-                response = await self.client.chat.completions.create(
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
                     model=self.model.name,
                     messages=[m for m in self.history if m["role"] != "system"],
                     max_completion_tokens=self.model.max_tokens,
@@ -113,69 +114,63 @@ class OpenAIProvider(ChatbotProvider):
                 self.add_to_history("assistant", content)
                 yield content
             else:
-                stream = await self.client.chat.completions.create(
+                stream = await asyncio.to_thread(
+                    self.client.chat.completions.create,
                     model=self.model.name,
                     messages=self.history,
                     stream=True,
                     max_tokens=self.model.max_tokens,
                 )
                 full = ""
-                async for chunk in stream:
+                for chunk in stream:
                     if chunk.choices[0].delta.content:
                         delta = chunk.choices[0].delta.content
                         full += delta
                         yield delta
                 self.add_to_history("assistant", full)
-        except openai.APIError as e:
-            error_msg = f"OpenAI API error: {str(e)}"
-            yield error_msg
-        except openai.APIConnectionError as e:
-            error_msg = f"Connection error: {str(e)}"
-            yield error_msg
         except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            yield error_msg
-        except openai.APIError as e:
-            error_msg = f"OpenAI API error: {str(e)}"
-            yield error_msg
-        except openai.APIConnectionError as e:
-            error_msg = f"Connection error: {str(e)}"
-            yield error_msg
-        except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class AnthropicProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.client = anthropic.Anthropic(api_key=api_key)
 
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
         self.add_to_history("user", message)
         try:
             messages = [m for m in self.history if m["role"] != "system"]
-            async with self.client.messages.stream(
-                model=self.model.name,
-                messages=messages,
-                max_tokens=self.model.max_tokens,
-            ) as stream:
-                full = ""
-                async for text in stream.text_stream:
-                    full += text
-                    yield text
-                self.add_to_history("assistant", full)
+
+            def _stream() -> list[str]:
+                with self.client.messages.stream(
+                    model=self.model.name,
+                    messages=messages,
+                    max_tokens=self.model.max_tokens,
+                ) as stream:
+                    return list(stream.text_stream)
+
+            chunks = await asyncio.to_thread(_stream)
+            full = ""
+            for text in chunks:
+                full += text
+                yield text
+            self.add_to_history("assistant", full)
         except Exception as e:
-            error_msg = f"Anthropic error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class GeminiProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
         genai.configure(api_key=api_key)
         self.model_client = genai.GenerativeModel(model.name)
-        self.chat = self.model_client.start_chat(history=[])
+        self.history: List[dict[str, list[str]]] = []
+        self.chat = self.model_client.start_chat(history=self.history)
+
+    def add_to_history(self, role: str, content: str) -> None:  # type: ignore[override]
+        self.history.append({"role": role, "parts": [content]})
 
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
+        self.add_to_history("user", message)
         try:
             response = await asyncio.to_thread(
                 self.chat.send_message,
@@ -183,53 +178,61 @@ class GeminiProvider(ChatbotProvider):
                 stream=True,
                 generation_config=genai.types.GenerationConfig(max_output_tokens=self.model.max_tokens),
             )
+            full = ""
             for chunk in response:
                 if chunk.text:
+                    full += chunk.text
                     yield chunk.text
+            self.add_to_history("model", full)
         except Exception as e:
-            error_msg = f"Gemini error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class DeepSeekProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
-        self.client = openai.AsyncOpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        self.client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
         self._thinking_buffer = ""
         self._inside_thinking = False
 
     def _process_thinking_content(self, delta: str) -> str:
-        """Process delta content to hide thinking tags for thinking models."""
+        """Process delta content to hide thinking tags for thinking models, even when split."""
         if not self.model.is_thinking:
             return delta
-        
+
         self._thinking_buffer += delta
         output = ""
-        
-        # Process the buffer to extract content outside thinking tags
+
         while self._thinking_buffer:
             if not self._inside_thinking:
-                # Look for opening tag
                 start_idx = self._thinking_buffer.find("<thinking>")
                 if start_idx == -1:
-                    # No opening tag found, output everything
-                    output += self._thinking_buffer
-                    self._thinking_buffer = ""
-                else:
-                    # Output content before opening tag
-                    output += self._thinking_buffer[:start_idx]
-                    self._thinking_buffer = self._thinking_buffer[start_idx + 10:]  # len("<thinking>") = 10
-                    self._inside_thinking = True
+                    tag = "<thinking>"
+                    for i in range(len(tag) - 1, 0, -1):
+                        if self._thinking_buffer.endswith(tag[:i]):
+                            output += self._thinking_buffer[:-i]
+                            self._thinking_buffer = self._thinking_buffer[-i:]
+                            break
+                    else:
+                        output += self._thinking_buffer
+                        self._thinking_buffer = ""
+                    break
+                output += self._thinking_buffer[:start_idx]
+                self._thinking_buffer = self._thinking_buffer[start_idx + len("<thinking>") :]
+                self._inside_thinking = True
             else:
-                # Look for closing tag
                 end_idx = self._thinking_buffer.find("</thinking>")
                 if end_idx == -1:
-                    # No closing tag found yet, discard buffer content
-                    self._thinking_buffer = ""
-                else:
-                    # Skip content inside thinking tags
-                    self._thinking_buffer = self._thinking_buffer[end_idx + 11:]  # len("</thinking>") = 11
-                    self._inside_thinking = False
-        
+                    tag = "</thinking>"
+                    for i in range(len(tag) - 1, 0, -1):
+                        if self._thinking_buffer.endswith(tag[:i]):
+                            self._thinking_buffer = self._thinking_buffer[-i:]
+                            break
+                    else:
+                        self._thinking_buffer = ""
+                    break
+                self._thinking_buffer = self._thinking_buffer[end_idx + len("</thinking>") :]
+                self._inside_thinking = False
+
         return output
 
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
@@ -237,30 +240,33 @@ class DeepSeekProvider(ChatbotProvider):
         self._thinking_buffer = ""
         self._inside_thinking = False
         try:
-            stream = await self.client.chat.completions.create(
+            stream = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.model.name,
                 messages=self.history,
                 stream=True,
                 max_tokens=self.model.max_tokens,
             )
             full = ""
-            async for chunk in stream:
+            for chunk in stream:
                 if chunk.choices[0].delta.content:
                     delta = chunk.choices[0].delta.content
-                    processed_delta = self._process_thinking_content(delta)
-                    if processed_delta:
-                        full += processed_delta
-                        yield processed_delta
+                    processed = self._process_thinking_content(delta)
+                    if processed:
+                        full += processed
+                        yield processed
             self.add_to_history("assistant", full)
         except Exception as e:
-            error_msg = f"DeepSeek error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class MCPProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
         self.base_url = os.getenv("MCP_BASE_URL", "https://api.mcp-server.com")
         self.session = aiohttp.ClientSession()
+
+    async def close(self) -> None:
+        await self.session.close()
         
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
         self.add_to_history("user", message)
@@ -299,13 +305,12 @@ class MCPProvider(ChatbotProvider):
                         if "choices" in data and data["choices"][0]["delta"].get("content"):
                             yield data["choices"][0]["delta"]["content"]
         except Exception as e:
-            error_msg = f"MCP error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class GroqProvider(ChatbotProvider):
     def __init__(self, api_key: str, model: ModelInfo):
         super().__init__(api_key, model)
-        self.client = Groq(api_key=api_key)
+        self.client = groq.Groq(api_key=api_key)
 
     async def stream_response(self, message: str) -> AsyncGenerator[str, None]:
         self.add_to_history("user", message)
@@ -325,8 +330,7 @@ class GroqProvider(ChatbotProvider):
                     yield delta
             self.add_to_history("assistant", full)
         except Exception as e:
-            error_msg = f"Groq error: {str(e)}"
-            yield error_msg
+            yield f"Error: {str(e)}"
 
 class ChatBot:
     def __init__(self):
@@ -480,6 +484,12 @@ class ChatBot:
         except Exception as e:
             console.print(f"❌ Fatal error: {e}", style="bold red")
             sys.exit(1)
+        finally:
+            if self.provider and hasattr(self.provider, "close"):
+                try:
+                    await self.provider.close()  # type: ignore[attr-defined]
+                except Exception:
+                    pass
 
 app = typer.Typer(help="Multi-Provider CLI Chatbot")
 
